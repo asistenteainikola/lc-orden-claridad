@@ -5,16 +5,71 @@ import { Mail, Phone, Send, CheckCircle2 } from "lucide-react";
 
 export default function Contacto() {
   const [sent, setSent] = useState(false);
-  const [form, setForm] = useState({ nombre: "", empresa: "", email: "", mensaje: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    nombre: "",
+    empresa: "",
+    email: "",
+    telefono: "",
+    servicio: "",
+    mensaje: "",
+  });
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     setForm({ ...form, [e.target.name]: e.target.value });
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // For now, just simulate — replace with actual form service (Formspree, etc.)
-    setSent(true);
+    setError(null);
+
+    const accessKey = process.env.NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY?.trim();
+    if (!accessKey) {
+      setError(
+        "Falta la clave del formulario. Crea una cuenta gratuita en web3forms.com, registra el correo donde quieres recibir los mensajes y define NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY en el entorno."
+      );
+      return;
+    }
+
+    const lines = [
+      `Nombre: ${form.nombre.trim()}`,
+      form.empresa.trim() ? `Empresa / emprendimiento: ${form.empresa.trim()}` : null,
+      `Correo: ${form.email.trim()}`,
+      `Teléfono / WhatsApp: ${form.telefono.trim()}`,
+      form.servicio.trim() ? `Servicio de interés: ${form.servicio.trim()}` : null,
+      "",
+      "Mensaje:",
+      form.mensaje.trim(),
+    ].filter((line) => line !== null);
+
+    setLoading(true);
+    try {
+      const res = await fetch("https://api.web3forms.com/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          access_key: accessKey,
+          subject: `Contacto web — ${form.nombre.trim()}`,
+          name: form.nombre.trim(),
+          email: form.email.trim(),
+          message: lines.join("\n"),
+          telefono: form.telefono.trim(),
+          ...(form.empresa.trim() && { empresa: form.empresa.trim() }),
+          ...(form.servicio.trim() && { servicio: form.servicio.trim() }),
+        }),
+      });
+      const data = (await res.json()) as { success?: boolean; message?: string };
+      if (!res.ok || !data.success) {
+        setError(data.message || "No se pudo enviar. Intenta de nuevo más tarde.");
+        return;
+      }
+      setSent(true);
+    } catch {
+      setError("Error de conexión. Revisa tu red e intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -175,6 +230,25 @@ export default function Contacto() {
                     value={form.email}
                     onChange={handleChange}
                     placeholder="tu@correo.com"
+                    autoComplete="email"
+                    className="w-full border border-[#D8E0EC] rounded-lg px-4 py-3 text-sm text-[#1E293B] placeholder:text-[#64748B]/50 focus:outline-none focus:border-[#1C3557] focus:ring-2 focus:ring-[#1C3557]/10 transition-all"
+                  />
+                </div>
+
+                <div className="mb-5">
+                  <label className="block font-[family-name:var(--font-montserrat)] text-xs font-600 text-[#1C3557] uppercase tracking-wide mb-2">
+                    Teléfono o WhatsApp *
+                  </label>
+                  <input
+                    type="tel"
+                    name="telefono"
+                    required
+                    value={form.telefono}
+                    onChange={handleChange}
+                    placeholder="+56 9 1234 5678"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    minLength={8}
                     className="w-full border border-[#D8E0EC] rounded-lg px-4 py-3 text-sm text-[#1E293B] placeholder:text-[#64748B]/50 focus:outline-none focus:border-[#1C3557] focus:ring-2 focus:ring-[#1C3557]/10 transition-all"
                   />
                 </div>
@@ -185,6 +259,8 @@ export default function Contacto() {
                   </label>
                   <select
                     name="servicio"
+                    value={form.servicio}
+                    onChange={handleChange}
                     className="w-full border border-[#D8E0EC] rounded-lg px-4 py-3 text-sm text-[#1E293B] bg-white focus:outline-none focus:border-[#1C3557] focus:ring-2 focus:ring-[#1C3557]/10 transition-all"
                   >
                     <option value="">Selecciona una opción</option>
@@ -212,12 +288,24 @@ export default function Contacto() {
                   />
                 </div>
 
+                {error && (
+                  <p
+                    className="mb-4 text-sm text-red-600 font-[family-name:var(--font-montserrat)]"
+                    role="alert"
+                  >
+                    {error}
+                  </p>
+                )}
+
                 <button
                   type="submit"
-                  className="w-full flex items-center justify-center gap-2 bg-[#1C3557] hover:bg-[#152c47] text-white font-[family-name:var(--font-montserrat)] font-600 text-sm px-6 py-4 rounded-lg transition-colors duration-200 group"
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 bg-[#1C3557] hover:bg-[#152c47] disabled:opacity-60 disabled:pointer-events-none text-white font-[family-name:var(--font-montserrat)] font-600 text-sm px-6 py-4 rounded-lg transition-colors duration-200 group"
                 >
-                  Enviar mensaje
-                  <Send size={15} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                  {loading ? "Enviando…" : "Enviar mensaje"}
+                  {!loading && (
+                    <Send size={15} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                  )}
                 </button>
               </form>
             )}
