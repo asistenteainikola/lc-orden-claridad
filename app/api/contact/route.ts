@@ -32,6 +32,50 @@ function trim(s: unknown, max: number): string {
   return s.trim().slice(0, max);
 }
 
+/**
+ * Google Apps Script suele responder 302 → script.googleusercontent.com.
+ * Con redirect automático, fetch puede convertir el POST en GET y Google devuelve HTML.
+ * Seguimos redirecciones manualmente repitiendo POST con el mismo cuerpo.
+ */
+async function postToGoogleAppsScript(
+  startUrl: string,
+  body: Record<string, string>
+): Promise<Response> {
+  const payload = JSON.stringify(body);
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  let url = startUrl;
+  let response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: payload,
+    redirect: "manual",
+  });
+
+  for (let hop = 0; hop < 6; hop++) {
+    const code = response.status;
+    if (code !== 301 && code !== 302 && code !== 303 && code !== 307 && code !== 308) {
+      return response;
+    }
+    const location = response.headers.get("Location");
+    if (!location) {
+      return response;
+    }
+    url = new URL(location, url).href;
+    response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: payload,
+      redirect: "manual",
+    });
+  }
+
+  return response;
+}
+
 export async function POST(request: Request) {
   const webappUrl = process.env.GOOGLE_APPS_SCRIPT_URL?.trim();
   const sharedSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET?.trim();
@@ -75,18 +119,14 @@ export async function POST(request: Request) {
 
   let upstream: Response;
   try {
-    upstream = await fetch(webappUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        secret: sharedSecret,
-        nombre,
-        empresa,
-        email,
-        telefono,
-        servicio,
-        mensaje,
-      }),
+    upstream = await postToGoogleAppsScript(webappUrl, {
+      secret: sharedSecret,
+      nombre,
+      empresa,
+      email,
+      telefono,
+      servicio,
+      mensaje,
     });
   } catch {
     return NextResponse.json(
