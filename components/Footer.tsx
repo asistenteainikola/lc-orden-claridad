@@ -60,8 +60,8 @@ export default function Footer() {
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3">
                 <Mail size={15} className="text-[#C9962A] shrink-0" />
-                <a href="mailto:franco.laurie@gmail.com" className="text-white/60 hover:text-white text-sm transition-colors">
-                  franco.laurie@gmail.com
+                <a href="mailto:asistente.ai.nikola@gmail.com" className="text-white/60 hover:text-white text-sm transition-colors">
+                  asistente.ai.nikola@gmail.com
                 </a>
               </div>
               <div className="flex items-start gap-3">
