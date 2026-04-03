@@ -24,61 +24,18 @@ export default function Contacto() {
     e.preventDefault();
     setError(null);
 
-    const accessKey = process.env.NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY?.trim();
-    if (!accessKey) {
-      setError(
-        "Falta la clave del formulario. Crea una cuenta gratuita en web3forms.com, registra asistente.ai.nikola@gmail.com como correo de recepción y define NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY en el entorno."
-      );
-      return;
-    }
-
-    const lines = [
-      `Nombre: ${form.nombre.trim()}`,
-      form.empresa.trim() ? `Empresa / emprendimiento: ${form.empresa.trim()}` : null,
-      `Correo: ${form.email.trim()}`,
-      `Teléfono / WhatsApp: ${form.telefono.trim()}`,
-      form.servicio.trim() ? `Servicio de interés: ${form.servicio.trim()}` : null,
-      "",
-      "Mensaje:",
-      form.mensaje.trim(),
-    ].filter((line) => line !== null);
-
     setLoading(true);
     try {
-      const res = await fetch("https://api.web3forms.com/submit", {
+      const res = await fetch("/api/contact", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          access_key: accessKey,
-          subject: `Contacto web — ${form.nombre.trim()}`,
-          name: form.nombre.trim(),
-          email: form.email.trim(),
-          message: lines.join("\n"),
-          telefono: form.telefono.trim(),
-          botcheck: false,
-          ...(form.empresa.trim() && { empresa: form.empresa.trim() }),
-          ...(form.servicio.trim() && { servicio: form.servicio.trim() }),
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
       });
-
-      let data: { success?: boolean; message?: string; body?: { message?: string } };
-      try {
-        data = (await res.json()) as typeof data;
-      } catch {
-        setError("Respuesta inválida del servicio de envío. Intenta de nuevo.");
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "No se pudo enviar. Intenta de nuevo.");
         return;
       }
-
-      const apiMessage = data.message || data.body?.message;
-      const explicitFail = data.success === false;
-      if (!res.ok || explicitFail) {
-        setError(
-          apiMessage ||
-            "No se pudo enviar. Si usas un dominio nuevo en Web3Forms, puede que debas solicitar autorización del dominio en web3forms.com."
-        );
-        return;
-      }
-
       setSent(true);
     } catch {
       setError("Error de conexión. Revisa tu red e intenta de nuevo.");
