@@ -37,10 +37,12 @@ export async function POST(request: Request) {
   const sharedSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET?.trim();
 
   if (!webappUrl || !sharedSecret) {
+    const missing: string[] = [];
+    if (!webappUrl) missing.push("GOOGLE_APPS_SCRIPT_URL");
+    if (!sharedSecret) missing.push("GOOGLE_APPS_SCRIPT_SECRET");
     return NextResponse.json(
       {
-        error:
-          "Falta configurar el envío (GOOGLE_APPS_SCRIPT_URL y GOOGLE_APPS_SCRIPT_SECRET en el servidor).",
+        error: `Falta configurar en Vercel (entorno Production): ${missing.join(" y ")}. Tras guardarlas, haz un redeploy.`,
       },
       { status: 503 }
     );
