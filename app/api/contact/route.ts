@@ -95,13 +95,37 @@ export async function POST(request: Request) {
     );
   }
 
-  const text = await upstream.text();
+  const text = (await upstream.text()).trim();
+  const status = upstream.status;
+
+  if (!text) {
+    return NextResponse.json(
+      {
+        error:
+          "El script de Google no devolvió datos (respuesta vacía). Comprueba la URL del despliegue y que la aplicación web esté publicada.",
+      },
+      { status: 502 }
+    );
+  }
+
+  if (text.startsWith("<") || text.startsWith("<!")) {
+    return NextResponse.json(
+      {
+        error:
+          "Google devolvió una página HTML en lugar del resultado del script. Suele pasar si GOOGLE_APPS_SCRIPT_URL no es la URL del despliegue «Aplicación web» (debe terminar en /exec), si el acceso no es «Cualquiera» o si hace falta crear una nueva versión del despliegue en Apps Script.",
+      },
+      { status: 502 }
+    );
+  }
+
   let data: { ok?: boolean; error?: string };
   try {
     data = JSON.parse(text) as { ok?: boolean; error?: string };
   } catch {
     return NextResponse.json(
-      { error: "Respuesta inesperada del servicio de correo." },
+      {
+        error: `No se pudo interpretar la respuesta del script (HTTP ${status}). Revisa que la URL en Vercel sea exactamente la que copia Google al desplegar la aplicación web.`,
+      },
       { status: 502 }
     );
   }

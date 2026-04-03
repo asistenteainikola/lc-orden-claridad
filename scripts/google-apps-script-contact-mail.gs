@@ -7,8 +7,9 @@
  * 3. Desplegar → Nueva implementación → Aplicación web:
  *    - Ejecutar como: Yo
  *    - Quién tiene acceso: Cualquiera
- * 4. Copia la URL → GOOGLE_APPS_SCRIPT_URL en Vercel y .env.local
- * 5. La primera vez, al ejecutar, Google pedirá autorizar el envío de correo.
+ * 4. Copia la URL que termina en /exec → GOOGLE_APPS_SCRIPT_URL en Vercel y .env.local (no uses la URL del editor).
+ * 5. Si editas el código después: Desplegar → Gestionar implementaciones → lápiz → Versión «Nueva versión» → Desplegar (la URL suele ser la misma).
+ * 6. La primera vez, al ejecutar, Google pedirá autorizar el envío de correo.
  *
  * Destinatario fijo (cámbialo aquí si hace falta):
  */
