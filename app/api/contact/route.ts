@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 
 /**
- * Reenvía el formulario a un Web App de Google Apps Script que envía el correo con MailApp.
- * Funciona en Vercel (no depende de Web3Forms ni del dominio del navegador).
+ * Reenvía el formulario al webhook de n8n (POST JSON).
  *
- * Vercel / .env.local:
- * - GOOGLE_APPS_SCRIPT_URL — URL del despliegue “Aplicación web”
- * - GOOGLE_APPS_SCRIPT_SECRET — misma cadena que la propiedad WEBAPP_SECRET del script
+ * Variables (solo servidor, p. ej. Vercel / .env.local):
+ * - N8N_CONTACT_WEBHOOK_URL — URL completa del nodo Webhook (producción)
+ * - N8N_WEBHOOK_SECRET — opcional; si existe, se envía en el header X-N8N-Webhook-Secret
  */
 
 type Body = {
@@ -32,61 +31,13 @@ function trim(s: unknown, max: number): string {
   return s.trim().slice(0, max);
 }
 
-/**
- * Google Apps Script suele responder 302 → script.googleusercontent.com.
- * Con redirect automático, fetch puede convertir el POST en GET y Google devuelve HTML.
- * Seguimos redirecciones manualmente repitiendo POST con el mismo cuerpo.
- */
-async function postToGoogleAppsScript(
-  startUrl: string,
-  body: Record<string, string>
-): Promise<Response> {
-  const payload = JSON.stringify(body);
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-
-  let url = startUrl;
-  let response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: payload,
-    redirect: "manual",
-  });
-
-  for (let hop = 0; hop < 6; hop++) {
-    const code = response.status;
-    if (code !== 301 && code !== 302 && code !== 303 && code !== 307 && code !== 308) {
-      return response;
-    }
-    const location = response.headers.get("Location");
-    if (!location) {
-      return response;
-    }
-    url = new URL(location, url).href;
-    response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: payload,
-      redirect: "manual",
-    });
-  }
-
-  return response;
-}
-
 export async function POST(request: Request) {
-  const webappUrl = process.env.GOOGLE_APPS_SCRIPT_URL?.trim();
-  const sharedSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET?.trim();
-
-  if (!webappUrl || !sharedSecret) {
-    const missing: string[] = [];
-    if (!webappUrl) missing.push("GOOGLE_APPS_SCRIPT_URL");
-    if (!sharedSecret) missing.push("GOOGLE_APPS_SCRIPT_SECRET");
+  const webhookUrl = process.env.N8N_CONTACT_WEBHOOK_URL?.trim();
+  if (!webhookUrl) {
     return NextResponse.json(
       {
-        error: `Falta configurar en Vercel (entorno Production): ${missing.join(" y ")}. Tras guardarlas, haz un redeploy.`,
+        error:
+          "Falta N8N_CONTACT_WEBHOOK_URL en el entorno del servidor (Vercel / .env.local).",
       },
       { status: 503 }
     );
@@ -117,62 +68,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Correo electrónico no válido." }, { status: 400 });
   }
 
+  const payload = {
+    source: "lc-orden-claridad",
+    submittedAt: new Date().toISOString(),
+    nombre,
+    empresa: empresa || undefined,
+    email,
+    telefono,
+    servicio: servicio || undefined,
+    mensaje,
+  };
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  const secret = process.env.N8N_WEBHOOK_SECRET?.trim();
+  if (secret) {
+    headers["X-N8N-Webhook-Secret"] = secret;
+  }
+
   let upstream: Response;
   try {
-    upstream = await postToGoogleAppsScript(webappUrl, {
-      secret: sharedSecret,
-      nombre,
-      empresa,
-      email,
-      telefono,
-      servicio,
-      mensaje,
+    upstream = await fetch(webhookUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
     });
   } catch {
     return NextResponse.json(
-      { error: "No se pudo conectar con el servicio de correo. Intenta más tarde." },
+      { error: "No se pudo conectar con el servicio. Intenta más tarde." },
       { status: 502 }
     );
   }
 
-  const text = (await upstream.text()).trim();
-  const status = upstream.status;
-
-  if (!text) {
+  if (!upstream.ok) {
+    const hint = await upstream.text().catch(() => "");
     return NextResponse.json(
       {
         error:
-          "El script de Google no devolvió datos (respuesta vacía). Comprueba la URL del despliegue y que la aplicación web esté publicada.",
+          hint.slice(0, 200) ||
+          `El webhook respondió con error (HTTP ${upstream.status}).`,
       },
-      { status: 502 }
-    );
-  }
-
-  if (text.startsWith("<") || text.startsWith("<!")) {
-    return NextResponse.json(
-      {
-        error:
-          "Google devolvió una página HTML en lugar del resultado del script. Suele pasar si GOOGLE_APPS_SCRIPT_URL no es la URL del despliegue «Aplicación web» (debe terminar en /exec), si el acceso no es «Cualquiera» o si hace falta crear una nueva versión del despliegue en Apps Script.",
-      },
-      { status: 502 }
-    );
-  }
-
-  let data: { ok?: boolean; error?: string };
-  try {
-    data = JSON.parse(text) as { ok?: boolean; error?: string };
-  } catch {
-    return NextResponse.json(
-      {
-        error: `No se pudo interpretar la respuesta del script (HTTP ${status}). Revisa que la URL en Vercel sea exactamente la que copia Google al desplegar la aplicación web.`,
-      },
-      { status: 502 }
-    );
-  }
-
-  if (!data.ok) {
-    return NextResponse.json(
-      { error: data.error || "No se pudo enviar el mensaje." },
       { status: 502 }
     );
   }
